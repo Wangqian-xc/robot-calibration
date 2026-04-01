@@ -320,7 +320,7 @@ header {
 .res-btns { display: flex; gap: 10px; flex-shrink: 0; }
 
 /* ── COMPLETE ────────────────────────────────── */
-#sc-complete { display: none; }
+#all-done-panel { display: none; }
 .cmp-hd { text-align: center; padding: 22px 0 18px; }
 .cmp-icon  { font-size: 40px; margin-bottom: 8px; }
 .cmp-title { font-size: 21px; font-weight: 800; color: var(--green); margin-bottom: 5px; }
@@ -609,8 +609,8 @@ header {
           <table class="data-table" id="pt-table" style="display:none">
             <thead><tr>
               <th>#</th><th>机械臂</th>
-              <th>X</th><th>Y</th><th>Z</th>
-              <th>Rx</th><th>Ry</th><th>Rz</th>
+              <th>X (m)</th><th>Y (m)</th><th>Z (m)</th>
+              <th>Rx (rad)</th><th>Ry (rad)</th><th>Rz (rad)</th>
             </tr></thead>
             <tbody id="pt-tbody"></tbody>
           </table>
@@ -645,8 +645,8 @@ header {
           </div>
           <div class="matrix-grid" id="matrix-cells"></div>
           <div class="munit-row">
-            <div class="munit">mm</div><div class="munit">mm</div><div class="munit">mm</div>
-            <div class="munit">°</div><div class="munit">°</div><div class="munit">°</div>
+            <div class="munit">m</div><div class="munit">m</div><div class="munit">m</div>
+            <div class="munit">rad</div><div class="munit">rad</div><div class="munit">rad</div>
           </div>
           <div style="margin-top:12px;font-size:12px;color:var(--text3)">
             <span id="rel-from" style="color:var(--blue)">—</span>
@@ -658,10 +658,10 @@ header {
         <div class="card">
           <div class="card-hd">
             <span>点对拟合误差</span>
-            <span style="font-size:12px;color:var(--text2)">均值 <span id="err-avg" style="color:var(--blue);font-weight:700">—</span> mm</span>
+            <span style="font-size:12px;color:var(--text2)">均值 <span id="err-avg" style="color:var(--blue);font-weight:700">—</span> m</span>
           </div>
           <table class="err-table">
-            <thead><tr><th>#</th><th>拟合误差 (mm)</th><th style="text-align:right">误差条</th></tr></thead>
+            <thead><tr><th>#</th><th>拟合误差 (m)</th><th style="text-align:right">误差条</th></tr></thead>
             <tbody id="err-tbody"></tbody>
           </table>
         </div>
@@ -692,12 +692,13 @@ header {
       </div>
     </div>
 
-    <!-- COMPLETE -->
-    <div id="sc-complete">
-      <div class="cmp-hd">
+    <!-- ALL DONE PANEL — persistent, never hidden by navigation -->
+    <div id="all-done-panel" style="display:none">
+      <div style="height:1px;background:var(--bdr);margin:24px 0 20px"></div>
+      <div class="cmp-hd" style="padding:0 0 16px">
         <div class="cmp-icon">✓</div>
         <div class="cmp-title">所有标定对已完成</div>
-        <div class="cmp-sub">请在下方生成各机械臂在世界坐标系下的误差结果</div>
+        <div class="cmp-sub">请在下方生成各机械臂在世界坐标系下的位姿结果</div>
       </div>
 
       <!-- Pairs summary -->
@@ -706,7 +707,7 @@ header {
         <div id="complete-pairs-summary"></div>
       </div>
 
-      <!-- Generate button (bottom) -->
+      <!-- Generate button -->
       <div class="card" id="gen-card">
         <div class="gen-zone">
           <div class="gen-desc">所有标定对已确认完毕。<br>点击【生成误差结果】计算各机械臂在世界坐标系下的位姿。</div>
@@ -717,7 +718,7 @@ header {
         </div>
       </div>
 
-      <!-- World error table (hidden until generated, at bottom) -->
+      <!-- World table (shown after generation) -->
       <div id="world-result-section" style="display:none">
         <div class="card" style="margin-bottom:14px">
           <div class="card-hd">
@@ -728,8 +729,8 @@ header {
             <table class="world-table" id="world-tbody-wrap">
               <thead><tr>
                 <th>机械臂</th>
-                <th>X (mm)</th><th>Y (mm)</th><th>Z (mm)</th>
-                <th>Rx (°)</th><th>Ry (°)</th><th>Rz (°)</th>
+                <th>X (m)</th><th>Y (m)</th><th>Z (m)</th>
+                <th>Rx (rad)</th><th>Ry (rad)</th><th>Rz (rad)</th>
               </tr></thead>
               <tbody id="world-tbody"></tbody>
             </table>
@@ -875,9 +876,13 @@ function selectPair(i) {
   if (phase === 'idle') return;
   cur = i;
   pts = PAIRS[i].points.slice();
-  if (PAIRS[i].result) { showResult(PAIRS[i].result); updateSteps(2); }
+  if (PAIRS[i].result) { showResult(PAIRS[i].result); updateSteps(PAIRS[i].status==='ok'?3:2); }
   else { document.getElementById('btn-calc').disabled = pts.length < 10; showCapture(); updateSteps(1); }
   renderSidebar(); renderProgressFooter();
+  // Keep all-done panel visible if all pairs are confirmed
+  if (PAIRS.every(p => p.status === 'ok')) {
+    document.getElementById('all-done-panel').style.display = 'block';
+  }
   toast('i', `已切换：${ROBOTS[PAIRS[i].a].name} ↔ ${ROBOTS[PAIRS[i].b].name}`);
 }
 
@@ -1049,12 +1054,12 @@ function showResult(res) {
   const mx = res.maxErr;
   document.getElementById('err-tbody').innerHTML = res.errors.map((e,i) => {
     sum += e.d;
-    const cls = e.d < 0.3 ? 'eg' : e.d < 0.6 ? 'ew' : 'eb';
-    const bc  = e.d < 0.3 ? '#22c870' : e.d < 0.6 ? '#e8b020' : '#ff4040';
+    const cls = e.d < 0.0003 ? 'eg' : e.d < 0.0006 ? 'ew' : 'eb';
+    const bc  = e.d < 0.0003 ? '#22c870' : e.d < 0.0006 ? '#e8b020' : '#ff4040';
     const bp  = Math.min(100, e.d/(mx*1.2)*100).toFixed(1);
     return `<tr>
       <td style="color:var(--text3)">${i+1}</td>
-      <td class="${cls}">${e.d.toFixed(5)}</td>
+      <td class="${cls}">${e.d.toFixed(6)}</td>
       <td style="text-align:right">
         <div style="width:80px;height:4px;background:var(--bg3);border-radius:2px;display:inline-block;vertical-align:middle">
           <div style="width:${bp}%;height:100%;background:${bc};border-radius:2px"></div>
@@ -1062,7 +1067,7 @@ function showResult(res) {
       </td>
     </tr>`;
   }).join('');
-  document.getElementById('err-avg').textContent = (sum/res.errors.length).toFixed(5);
+  document.getElementById('err-avg').textContent = (sum/res.errors.length).toFixed(6);
   renderProgressFooter();
 }
 
@@ -1093,8 +1098,10 @@ function confirmPair() {
 
 function redoPair() {
   PAIRS[cur].status='pending'; PAIRS[cur].points=[]; PAIRS[cur].result=null; PAIRS[cur].probeA=null; PAIRS[cur].probeB=null;
-  pts=[]; document.getElementById('btn-calc').disabled=true;
-  showCapture(); updateSteps(1); renderSidebar(); toast('w','已重置，请重新采点');
+  pts=[]; worldPosesData=[];
+  document.getElementById('btn-calc').disabled=true;
+  document.getElementById('all-done-panel').style.display='none';
+  showCapture(); updateSteps(1); renderSidebar(); renderProgressFooter(); toast('w','已重置，请重新采点');
 }
 
 // ── MANUAL COMPLETE ALL ──────────────────────────────────
@@ -1127,33 +1134,35 @@ function manualCompleteAll() {
 
 // ── COMPLETE ─────────────────────────────────────────────
 function showComplete() {
-  hideAll();
-  document.getElementById('sc-complete').style.display='block';
-  document.getElementById('sc-complete').classList.add('fade-in');
   updateSteps(4);
   document.getElementById('status-text').textContent='标定完成';
   document.getElementById('btn-manual-complete').style.display='none';
-  document.getElementById('progress-footer').classList.remove('show');
-  // Reset generate state
-  document.getElementById('gen-card').style.display='block';
-  document.getElementById('world-result-section').style.display='none';
-  const btn = document.getElementById('btn-gen-errors');
-  btn.disabled = false;
-  btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h5v5H2V2zm0 7h5v5H2V9zm7-7h5v5H9V2zm2 7h1v2h2v1h-2v2h-1v-2H9v-1h2V9z"/></svg> 生成误差结果`;
+  // Show persistent all-done panel (never hidden again until abort/sync)
+  const panel = document.getElementById('all-done-panel');
+  panel.style.display='block';
+  panel.classList.add('fade-in');
+  // Only reset generate state on first call (don't wipe if already generated)
+  if (worldPosesData.length === 0) {
+    document.getElementById('gen-card').style.display='block';
+    document.getElementById('world-result-section').style.display='none';
+    const btn = document.getElementById('btn-gen-errors');
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h5v5H2V2zm0 7h5v5H2V9zm7-7h5v5H9V2zm2 7h1v2h2v1h-2v2h-1v-2H9v-1h2V9z"/></svg> 生成误差结果`;
+  }
   // Render pairs summary
   document.getElementById('complete-pairs-summary').innerHTML = PAIRS.map(p => {
     const ra = ROBOTS[p.a], rb = ROBOTS[p.b];
-    const me = p.result ? Math.max(...p.result.errors.map(e=>e.d)).toFixed(4) : '—';
-    const avg = p.result ? (p.result.errors.reduce((s,e)=>s+e.d,0)/p.result.errors.length).toFixed(4) : '—';
-    const cls = p.result ? (parseFloat(me)<0.5?'eg':parseFloat(me)<0.8?'ew':'eb') : '';
+    const me = p.result ? Math.max(...p.result.errors.map(e=>e.d)).toFixed(6) : '—';
+    const avg = p.result ? (p.result.errors.reduce((s,e)=>s+e.d,0)/p.result.errors.length).toFixed(6) : '—';
+    const cls = p.result ? (parseFloat(me)<0.0003?'eg':parseFloat(me)<0.0006?'ew':'eb') : '';
     return `<div class="pair-sum-row">
       <span class="pair-sum-name">
         <span style="color:${ra.color}">●</span> ${ra.name}
         <span style="color:var(--text3);margin:0 6px">↔</span>
         <span style="color:${rb.color}">●</span> ${rb.name}
       </span>
-      <span class="pair-sum-err">最大误差 <span class="${cls}">${me} mm</span></span>
-      <span class="pair-sum-err" style="margin-left:14px">均值 <span class="${cls}">${avg} mm</span></span>
+      <span class="pair-sum-err">最大误差 <span class="${cls}">${me} m</span></span>
+      <span class="pair-sum-err" style="margin-left:14px">均值 <span class="${cls}">${avg} m</span></span>
       <span class="tag tg-green" style="margin-left:10px">已确认</span>
     </div>`;
   }).join('');
@@ -1180,7 +1189,7 @@ function renderWorldTable() {
   document.getElementById('world-tbody').innerHTML = worldPosesData.map((row, i) => {
     const r = ROBOTS[row.robotIdx];
     const poseInputs = row.pose.map((v, j) =>
-      `<td><input class="world-inp" data-row="${i}" data-col="${j}" value="${v.toFixed(4)}" oninput="onWorldEdit(${i},${j},this.value)"></td>`
+      `<td><input class="world-inp" data-row="${i}" data-col="${j}" value="${v.toFixed(6)}" oninput="onWorldEdit(${i},${j},this.value)"></td>`
     ).join('');
     return `<tr>
       <td><span style="color:${r.color}">●</span> ${r.name}</td>
@@ -1215,7 +1224,7 @@ function worldPoses() {
   PAIRS.forEach(p => {
     if (p.result) {
       const from = poses[p.a], m = p.result.matrix;
-      poses[p.b] = m.map((v,j) => +(from[j] + v).toFixed(4));
+      poses[p.b] = m.map((v,j) => +(from[j] + v).toFixed(6));
     }
   });
   return poses;
@@ -1229,6 +1238,7 @@ function syncConfig() {
     phase='idle'; cur=0; pts=[]; worldPosesData=[];
     PAIRS.forEach(p=>{p.status='pending';p.points=[];p.result=null;p.probeA=null;p.probeB=null;});
     hideAll();
+    document.getElementById('all-done-panel').style.display='none';
     document.getElementById('sc-idle').style.display='';
     document.getElementById('steps-bar').style.display='none';
     document.getElementById('btn-abort').style.display='none';
@@ -1248,6 +1258,7 @@ function abortCalibration() {
   hideAll();
   document.getElementById('sc-idle').style.display='';
   document.getElementById('steps-bar').style.display='none';
+  document.getElementById('all-done-panel').style.display='none';
   document.getElementById('btn-abort').style.display='none';
   document.getElementById('btn-manual-complete').style.display='none';
   document.getElementById('progress-footer').classList.remove('show');
@@ -1272,38 +1283,39 @@ function updateSteps(active) {
 }
 
 function hideAll() {
-  ['sc-idle','sc-capture','sc-result','sc-complete'].forEach(id=>{
+  ['sc-idle','sc-capture','sc-result'].forEach(id=>{
     const e=document.getElementById(id);
     e.style.display='none'; e.classList.remove('fade-in');
   });
 }
 
 // ── MOCK DATA ────────────────────────────────────────────
+// All positions in m, all angles in rad
 function mockPos(id) {
-  const b={Robot_01:[120,250,480],Robot_02:[450,260,490],Robot_03:[780,245,475],Robot_04:[1100,255,485]};
+  const b={Robot_01:[0.120,0.250,0.480],Robot_02:[0.450,0.260,0.490],Robot_03:[0.780,0.245,0.475],Robot_04:[1.100,0.255,0.485]};
   const base=b[id]||[0,0,0];
   return {
-    x:+(base[0]+(Math.random()-.5)*50).toFixed(3),
-    y:+(base[1]+(Math.random()-.5)*40).toFixed(3),
-    z:+(base[2]+(Math.random()-.5)*30).toFixed(3),
-    rx:+((Math.random()-.5)*30).toFixed(3),
-    ry:+((Math.random()-.5)*20).toFixed(3),
-    rz:+((Math.random()-.5)*180).toFixed(3),
+    x:+(base[0]+(Math.random()-.5)*0.05).toFixed(6),
+    y:+(base[1]+(Math.random()-.5)*0.04).toFixed(6),
+    z:+(base[2]+(Math.random()-.5)*0.03).toFixed(6),
+    rx:+((Math.random()-.5)*0.524).toFixed(6),
+    ry:+((Math.random()-.5)*0.349).toFixed(6),
+    rz:+((Math.random()-.5)*3.142).toFixed(6),
   };
 }
 
 function mockCalc(pair) {
   const matrix = [
-    +(300+(Math.random()-.5)*40).toFixed(4),
-    +(  5+(Math.random()-.5)*8).toFixed(4),
-    +( -2+(Math.random()-.5)*6).toFixed(4),
-    +(0.12+(Math.random()-.5)*.5).toFixed(4),
-    +(0.18+(Math.random()-.5)*.4).toFixed(4),
-    +(0.05+(Math.random()-.5)*.3).toFixed(4),
+    +(0.300+(Math.random()-.5)*0.040).toFixed(6),
+    +(0.005+(Math.random()-.5)*0.008).toFixed(6),
+    +(-0.002+(Math.random()-.5)*0.006).toFixed(6),
+    +(0.0021+(Math.random()-.5)*0.0087).toFixed(6),
+    +(0.0031+(Math.random()-.5)*0.0070).toFixed(6),
+    +(0.0009+(Math.random()-.5)*0.0052).toFixed(6),
   ];
   const errors = (pair.points.length > 0 ? pair.points : new Array(10).fill(null)).map(()=>{
-    const ex=Math.random()*.42+.02, ey=Math.random()*.36+.02, ez=Math.random()*.28+.02;
-    return { d: +Math.sqrt(ex*ex+ey*ey+ez*ez).toFixed(5) };
+    const ex=Math.random()*.00042+.00002, ey=Math.random()*.00036+.00002, ez=Math.random()*.00028+.00002;
+    return { d: +Math.sqrt(ex*ex+ey*ey+ez*ez).toFixed(6) };
   });
   return { matrix, errors, maxErr: Math.max(...errors.map(e=>e.d)) };
 }
