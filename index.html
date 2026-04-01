@@ -458,7 +458,6 @@ header {
   </div>
   <div class="h-right">
     <button class="btn btn-yellow" id="btn-manual-complete" style="display:none" onclick="manualCompleteAll()">⚑ 人工完成所有标定</button>
-    <button class="btn btn-red" id="btn-abort" style="display:none" onclick="abortCalibration()">✕ 中止标定</button>
   </div>
 </header>
 
@@ -701,12 +700,6 @@ header {
         <div class="cmp-sub">请在下方生成各机械臂在世界坐标系下的位姿结果</div>
       </div>
 
-      <!-- Pairs summary -->
-      <div class="card" style="margin-bottom:14px">
-        <div class="card-hd"><span>标定对确认汇总</span></div>
-        <div id="complete-pairs-summary"></div>
-      </div>
-
       <!-- Generate button -->
       <div class="card" id="gen-card">
         <div class="gen-zone">
@@ -893,7 +886,6 @@ function startCalibration() {
   PAIRS.forEach(p => { p.status='pending'; p.points=[]; p.result=null; p.probeA=null; p.probeB=null; });
   document.getElementById('sc-idle').style.display = 'none';
   document.getElementById('steps-bar').style.display = 'flex';
-  document.getElementById('btn-abort').style.display = '';
   document.getElementById('btn-manual-complete').style.display = '';
   document.getElementById('status-dot').classList.add('on');
   document.getElementById('status-text').textContent = '标定中';
@@ -1149,23 +1141,6 @@ function showComplete() {
     btn.disabled = false;
     btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h5v5H2V2zm0 7h5v5H2V9zm7-7h5v5H9V2zm2 7h1v2h2v1h-2v2h-1v-2H9v-1h2V9z"/></svg> 生成误差结果`;
   }
-  // Render pairs summary
-  document.getElementById('complete-pairs-summary').innerHTML = PAIRS.map(p => {
-    const ra = ROBOTS[p.a], rb = ROBOTS[p.b];
-    const me = p.result ? Math.max(...p.result.errors.map(e=>e.d)).toFixed(6) : '—';
-    const avg = p.result ? (p.result.errors.reduce((s,e)=>s+e.d,0)/p.result.errors.length).toFixed(6) : '—';
-    const cls = p.result ? (parseFloat(me)<0.0003?'eg':parseFloat(me)<0.0006?'ew':'eb') : '';
-    return `<div class="pair-sum-row">
-      <span class="pair-sum-name">
-        <span style="color:${ra.color}">●</span> ${ra.name}
-        <span style="color:var(--text3);margin:0 6px">↔</span>
-        <span style="color:${rb.color}">●</span> ${rb.name}
-      </span>
-      <span class="pair-sum-err">最大误差 <span class="${cls}">${me} m</span></span>
-      <span class="pair-sum-err" style="margin-left:14px">均值 <span class="${cls}">${avg} m</span></span>
-      <span class="tag tg-green" style="margin-left:10px">已确认</span>
-    </div>`;
-  }).join('');
 }
 
 function generateWorldErrors() {
@@ -1241,7 +1216,6 @@ function syncConfig() {
     document.getElementById('all-done-panel').style.display='none';
     document.getElementById('sc-idle').style.display='';
     document.getElementById('steps-bar').style.display='none';
-    document.getElementById('btn-abort').style.display='none';
     document.getElementById('btn-manual-complete').style.display='none';
     document.getElementById('progress-footer').classList.remove('show');
     document.getElementById('status-dot').classList.remove('on');
@@ -1251,22 +1225,6 @@ function syncConfig() {
   }, 1800);
 }
 
-function abortCalibration() {
-  if (!confirm('确定中止标定？所有已采集数据将丢失。')) return;
-  phase='idle'; cur=0; pts=[];
-  PAIRS.forEach(p=>{p.status='pending';p.points=[];p.result=null;p.probeA=null;p.probeB=null;});
-  hideAll();
-  document.getElementById('sc-idle').style.display='';
-  document.getElementById('steps-bar').style.display='none';
-  document.getElementById('all-done-panel').style.display='none';
-  document.getElementById('btn-abort').style.display='none';
-  document.getElementById('btn-manual-complete').style.display='none';
-  document.getElementById('progress-footer').classList.remove('show');
-  document.getElementById('status-dot').classList.remove('on');
-  document.getElementById('status-text').textContent='就绪';
-  renderBuiltPairs();
-  renderSidebar(); toast('w','标定已中止');
-}
 
 // ── STEPS ────────────────────────────────────────────────
 function updateSteps(active) {
